@@ -4,7 +4,7 @@ trigger:
 pool:
   vmImage: "ubuntu-latest"
 
-# 🎛 UI Dropdown Parameters
+# 🎛 UI Dropdowns Parameters
 parameters:
   - name: FEATURE
     displayName: "Select Feature Type"
