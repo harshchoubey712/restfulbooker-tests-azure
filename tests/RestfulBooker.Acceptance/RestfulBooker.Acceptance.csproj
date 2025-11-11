@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ✅ BDD Framework -->
+    <PackageReference Include="Allure.Commons" Version="3.0.0.10" />
+    <PackageReference Include="Reqnroll" Version="3.2.0" />
+    <PackageReference Include="Reqnroll.NUnit" Version="3.2.0" />
+    <PackageReference Include="Reqnroll.Tools.MsBuild.Generation" Version="3.2.0" PrivateAssets="All" />
+
+    <!-- ✅ Testing Framework -->
+    <PackageReference Include="NUnit" Version="3.13.3" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.5.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+
+    <!-- ✅ API + JSON -->
+    <PackageReference Include="RestSharp" Version="111.3.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="FluentAssertions" Version="6.12.0" />
+
+    <!-- ✅ Allure Reporting (latest stable from NuGet) -->
+  </ItemGroup>
+
+<ItemGroup>
+  <None Update="allureConfig.json">
+    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+  </None>
+
+  <None Include="appsettings.json">
+    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+  </None>
+</ItemGroup>
+
+</Project>

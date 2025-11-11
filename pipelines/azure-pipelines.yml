@@ -1,0 +1,149 @@
+trigger:
+  - master
+
+pool:
+  vmImage: "ubuntu-latest"
+
+# 🎛 UI Dropdown Parameters
+parameters:
+  - name: FEATURE
+    displayName: "Select Feature Type"
+    type: string
+    default: "All"
+    values:
+      - All
+      - CreateBooking
+      - GetBooking
+      - GetBookingIds
+      - UpdateBooking
+
+  - name: FLOW
+    displayName: "Select Flow Type"
+    type: string
+    default: "All"
+    values:
+      - All
+      - PositiveFlow
+      - NegativeFlow
+
+  - name: SCENARIO
+    displayName: "Select Specific Scenario (optional)"
+    type: string
+    default: "All"
+    values:
+      - All
+      - CreateBooking_Valid
+      - GetBooking_ValidId
+      - UpdateBooking_InvalidToken
+
+variables:
+  - group: RestfulBooker-TestVars
+
+  # 🧱 Docker setup
+  - name: DOCKER_IMAGE
+    value: "restfulbooker-tests"
+  - name: TEST_PROJECT_PATH
+    value: "tests/RestfulBooker.Acceptance"
+  - name: TEST_PROJECT_FILE
+    value: "RestfulBooker.Acceptance.csproj"
+  - name: TEST_RESULTS_DIR
+    value: "$(System.DefaultWorkingDirectory)/$(TEST_PROJECT_PATH)/TestResults"
+  - name: ALLURE_RESULTS_DIR
+    value: "$(System.DefaultWorkingDirectory)/$(TEST_PROJECT_PATH)/allure-results"
+  - name: ALLURE_REPORT_DIR
+    value: "$(System.DefaultWorkingDirectory)/$(TEST_PROJECT_PATH)/allure-report"
+
+stages:
+  - stage: TestAndReport
+    displayName: "🐳 Run Tests + Generate Allure Report"
+    jobs:
+      - job: RunTests
+        displayName: "Execute Tests in Docker"
+        steps:
+          - task: DockerInstaller@0
+            displayName: "Install Docker CLI"
+
+          - script: |
+              echo "🐳 Building Docker image: $(DOCKER_IMAGE)"
+              docker build -t $(DOCKER_IMAGE) $(TEST_PROJECT_PATH)
+            displayName: "🐳 Build Docker Image"
+
+          - script: |
+              echo "🔍 Selected Feature: ${{ parameters.FEATURE }}"
+              echo "🔍 Selected Flow: ${{ parameters.FLOW }}"
+              echo "🔍 Selected Scenario: ${{ parameters.SCENARIO }}"
+
+              FILTER=""
+
+              # 🧩 Feature filter logic (use TestCategory)
+              case "${{ parameters.FEATURE }}" in
+                "CreateBooking") FILTER="TestCategory=CreateBooking" ;;
+                "GetBooking") FILTER="TestCategory=GetBooking" ;;
+                "GetBookingIds") FILTER="TestCategory=GetBookingIds" ;;
+                "UpdateBooking") FILTER="TestCategory=UpdateBooking" ;;
+              esac
+
+              # 🧩 Scenario filter (TestCategory based)
+              if [ "${{ parameters.SCENARIO }}" = "CreateBooking_Valid" ]; then
+                FILTER="TestCategory=CreateBooking_Valid"
+              elif [ "${{ parameters.SCENARIO }}" = "GetBooking_ValidId" ]; then
+                FILTER="TestCategory=GetBooking_ValidId"
+              elif [ "${{ parameters.SCENARIO }}" = "UpdateBooking_InvalidToken" ]; then
+                FILTER="TestCategory=UpdateBooking_InvalidToken"
+              fi
+
+              # 🧩 Flow filter combine
+              if [ "${{ parameters.FLOW }}" = "PositiveFlow" ]; then
+                if [ -z "$FILTER" ]; then
+                  FILTER="TestCategory=PositiveFlow"
+                else
+                  FILTER="$FILTER&TestCategory=PositiveFlow"
+                fi
+              elif [ "${{ parameters.FLOW }}" = "NegativeFlow" ]; then
+                if [ -z "$FILTER" ]; then
+                  FILTER="TestCategory=NegativeFlow"
+                else
+                  FILTER="$FILTER&TestCategory=NegativeFlow"
+                fi
+              fi
+
+              # ✅ Final command
+              if [ -z "$FILTER" ] || [ "$FILTER" = "All" ]; then
+                echo "🎯 Running all tests (no filter applied)"
+                docker run --rm \
+                  -v $(TEST_RESULTS_DIR):/app/TestResults \
+                  -v $(ALLURE_RESULTS_DIR):/app/allure-results \
+                  -v $(ALLURE_REPORT_DIR):/app/allure-report \
+                  $(DOCKER_IMAGE) \
+                  bash -c "dotnet test $(TEST_PROJECT_FILE) -c Release --no-build \
+                  --results-directory /app/TestResults \
+                  --logger:'trx;LogFileName=test_results.trx' && \
+                  allure generate /app/allure-results --clean -o /app/allure-report"
+              else
+                echo "🎯 Running filtered tests → $FILTER"
+                docker run --rm \
+                  -v $(TEST_RESULTS_DIR):/app/TestResults \
+                  -v $(ALLURE_RESULTS_DIR):/app/allure-results \
+                  -v $(ALLURE_REPORT_DIR):/app/allure-report \
+                  $(DOCKER_IMAGE) \
+                  bash -c "dotnet test $(TEST_PROJECT_FILE) -c Release --no-build \
+                  --filter \"$FILTER\" \
+                  --results-directory /app/TestResults \
+                  --logger:'trx;LogFileName=test_results.trx' && \
+                  allure generate /app/allure-results --clean -o /app/allure-report"
+              fi
+            displayName: "🚀 Run Tests with Category-Based Smart Filter"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: "$(TEST_RESULTS_DIR)"
+              ArtifactName: "TestResults"
+              publishLocation: "Container"
+            displayName: "📦 Publish TRX Results"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: "$(ALLURE_REPORT_DIR)"
+              ArtifactName: "AllureReport"
+              publishLocation: "Container"
+            displayName: "📦 Publish Allure HTML Report"
