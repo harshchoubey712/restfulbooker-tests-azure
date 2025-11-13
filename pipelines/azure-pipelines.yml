@@ -4,7 +4,7 @@ trigger:
 pool:
   vmImage: "ubuntu-latest"
 
-# 🎛 UI Dropdowns Parameters
+# 🎛 UI Dropdown Parameters
 parameters:
   - name: FEATURE
     displayName: "Select Feature Type"
@@ -36,10 +36,11 @@ parameters:
       - GetBooking_ValidId
       - UpdateBooking_InvalidToken
 
+# 🧱 Variables
 variables:
   - group: RestfulBooker-TestVars
 
-  # 🧱 Docker setup
+  # Docker setup
   - name: DOCKER_IMAGE
     value: "restfulbooker-tests"
   - name: TEST_PROJECT_PATH
@@ -47,11 +48,11 @@ variables:
   - name: TEST_PROJECT_FILE
     value: "RestfulBooker.Acceptance.csproj"
   - name: TEST_RESULTS_DIR
-    value: "$(System.DefaultWorkingDirectory)/$(TEST_PROJECT_PATH)/TestResults"
+    value: "$(System.DefaultWorkingDirectory)/TestResults"
   - name: ALLURE_RESULTS_DIR
-    value: "$(System.DefaultWorkingDirectory)/$(TEST_PROJECT_PATH)/allure-results"
+    value: "$(System.DefaultWorkingDirectory)/allure-results"
   - name: ALLURE_REPORT_DIR
-    value: "$(System.DefaultWorkingDirectory)/$(TEST_PROJECT_PATH)/allure-report"
+    value: "$(System.DefaultWorkingDirectory)/allure-report"
 
 stages:
   - stage: TestAndReport
@@ -60,14 +61,17 @@ stages:
       - job: RunTests
         displayName: "Execute Tests in Docker"
         steps:
+          # 🧩 Step 1 — Install Docker
           - task: DockerInstaller@0
             displayName: "Install Docker CLI"
 
+          # 🧩 Step 2 — Build Docker image
           - script: |
               echo "🐳 Building Docker image: $(DOCKER_IMAGE)"
               docker build -t $(DOCKER_IMAGE) $(TEST_PROJECT_PATH)
             displayName: "🐳 Build Docker Image"
 
+          # 🧩 Step 3 — Run Tests with Smart Filter Logic
           - script: |
               echo "🔍 Selected Feature: ${{ parameters.FEATURE }}"
               echo "🔍 Selected Flow: ${{ parameters.FLOW }}"
@@ -75,7 +79,7 @@ stages:
 
               FILTER=""
 
-              # 🧩 Feature filter logic (use TestCategory)
+              # 🎯 Feature filter
               case "${{ parameters.FEATURE }}" in
                 "CreateBooking") FILTER="TestCategory=CreateBooking" ;;
                 "GetBooking") FILTER="TestCategory=GetBooking" ;;
@@ -83,7 +87,7 @@ stages:
                 "UpdateBooking") FILTER="TestCategory=UpdateBooking" ;;
               esac
 
-              # 🧩 Scenario filter (TestCategory based)
+              # 🎯 Scenario filter (takes priority)
               if [ "${{ parameters.SCENARIO }}" = "CreateBooking_Valid" ]; then
                 FILTER="TestCategory=CreateBooking_Valid"
               elif [ "${{ parameters.SCENARIO }}" = "GetBooking_ValidId" ]; then
@@ -92,7 +96,7 @@ stages:
                 FILTER="TestCategory=UpdateBooking_InvalidToken"
               fi
 
-              # 🧩 Flow filter combine
+              # 🎯 Flow filter combine
               if [ "${{ parameters.FLOW }}" = "PositiveFlow" ]; then
                 if [ -z "$FILTER" ]; then
                   FILTER="TestCategory=PositiveFlow"
@@ -107,7 +111,11 @@ stages:
                 fi
               fi
 
-              # ✅ Final command
+              # 🧩 Prepare clean folders
+              rm -rf $(TEST_RESULTS_DIR) $(ALLURE_RESULTS_DIR) $(ALLURE_REPORT_DIR)
+              mkdir -p $(TEST_RESULTS_DIR) $(ALLURE_RESULTS_DIR) $(ALLURE_REPORT_DIR)
+
+              # ✅ Run tests inside Docker
               if [ -z "$FILTER" ] || [ "$FILTER" = "All" ]; then
                 echo "🎯 Running all tests (no filter applied)"
                 docker run --rm \
@@ -134,16 +142,29 @@ stages:
               fi
             displayName: "🚀 Run Tests with Category-Based Smart Filter"
 
+          # 🧩 Step 4 — Publish TRX Results as Artifact
           - task: PublishBuildArtifacts@1
+            displayName: "📦 Publish TRX Results"
             inputs:
               PathtoPublish: "$(TEST_RESULTS_DIR)"
               ArtifactName: "TestResults"
               publishLocation: "Container"
-            displayName: "📦 Publish TRX Results"
 
+          # 🧩 Step 5 — Publish Allure HTML Report as Artifact
           - task: PublishBuildArtifacts@1
+            displayName: "📦 Publish Allure HTML Report"
             inputs:
               PathtoPublish: "$(ALLURE_REPORT_DIR)"
               ArtifactName: "AllureReport"
               publishLocation: "Container"
-            displayName: "📦 Publish Allure HTML Report"
+
+          # 🧩 Step 6 — Show Allure Report in Azure DevOps Tab
+          - task: PublishAllureReport@1
+            displayName: "📊 Publish Allure Report in Build Summary"
+            inputs:
+              reportDir: "$(ALLURE_REPORT_DIR)"
+              resultsDir: "$(ALLURE_RESULTS_DIR)"
+              allureVersion: "2.29.0"
+              reportName: "RestfulBooker Automated Tests"
+              includeSubFolders: true
+              cleanResults: false
